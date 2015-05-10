@@ -24,6 +24,9 @@ Supported third parties
 4. You may use addressfield module to markup addresses
    See https://www.drupal.org/project/addressfield
 
+5. You may use title module to markup core pseudo fields
+   See https://www.drupal.org/project/title
+
 Usage
 -----
 
