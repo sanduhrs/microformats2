@@ -1,0 +1,476 @@
+<?php
+
+/**
+ * @file
+ * Microformats2 module
+ */
+
+define('MICROFORMATS2_PROPERTY_SEPERATOR', '|');
+
+/**
+ * Implements hook_block_info().
+ */
+function microformats2_block_info() {
+  // This example comes from node.module.
+  $blocks['mf2'] = array(
+    'info' => t('mf2'),
+    'cache' => DRUPAL_NO_CACHE
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function microformats2_block_view($delta = '') {
+  $block = array();
+  switch ($delta) {
+    case 'mf2':
+      $current_url = url(current_path(), array('absolute' => TRUE));
+      $block['subject'] = t('mf2');
+      $block['content'] = array(
+        '#markup' => '<div>Microformats2 found for <strong>' . $current_url . '</strong>:</div><br />',
+        '#attached' => array(
+          'js' => array(
+            drupal_get_path('module', 'microformats2') . '/js/microformat-shiv.js',
+            drupal_get_path('module', 'microformats2') . '/js/microformats2.js',
+          ),
+        ),
+      );
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function microformats2_theme($existing, $type, $theme, $path) {
+  return array(
+    'microformats2_format_field_wrapper' => array(
+      'variables' => array(
+        'content' => NULL,
+        'attributes_array' => array(),
+      ),
+      'path' => drupal_get_path('module', 'microformats2') . '/templates',
+      'template' => 'microformats2-format-field-wrapper',
+    ),
+    'microformats2_property_field_wrapper' => array(
+      'variables' => array(
+        'content' => NULL,
+        'attributes_array' => array(),
+      ),
+      'path' => drupal_get_path('module', 'microformats2') . '/templates',
+      'template' => 'microformats2-property-field-wrapper',
+    ),
+  );
+}
+
+/**
+ * Implements hook_preprocess_field().
+ */
+function microformats2_preprocess_field(&$variables, $hook) {
+  $element = $variables['element'];
+  $field_name = $element['#field_name'];
+  $properties = microformats2_property_field_mapping();
+  if (!isset($properties[$field_name])) {
+    return;
+  }
+  $field_type = $element['#field_type'];
+  $items = $variables['items'];
+  $hook = 'microformats2_' . $field_type;
+  $variables['items'] = module_invoke_all($hook, $field_name, $items, $variables);
+}
+
+/**
+ * Default element wrapper.
+ *
+ * @param $element
+ *   A render array
+ * @param $property_name
+ *   The property that is being wrapped
+ * @param $options
+ *   An array containing optional values
+ *
+ * @return array
+ */
+function microformats2_element_wrapper($element, $property_name, $options = array()) {
+  $options = $options + array(
+    'class' => '',
+    'theme_wrapper_format' => 'microformats2_format_field_wrapper',
+    'theme_wrapper_property' => 'microformats2_property_field_wrapper',
+  );
+
+  $mapping = microformats2_property_field_mapping($property_name);
+  if (is_string($mapping)) {
+    $options['class'] = $mapping;
+    $theme_wrapper = $options['theme_wrapper_property'];
+  }
+  else if (isset($mapping['format'])) {
+    $options['class'] = $mapping['format'];
+    $theme_wrapper = $options['theme_wrapper_format'];
+  }
+
+  $element = array(
+    '#theme_wrappers' => array($theme_wrapper),
+    '#attributes_array' => array('class' => $options['class']),
+    '#content' => $element,
+  );
+  return $element;
+}
+
+/**
+ * Microformats2 property field mapping
+ *
+ * @return array
+ */
+function microformats2_property_field_mapping($field_name = NULL) {
+  $mapping = variable_get('microformats2_mapping', array());
+  drupal_alter('microformats2_mapping', $mapping);
+  return isset($mapping[$field_name]) ? $mapping[$field_name] : $mapping;
+}
+
+/**
+ * Microformats2 format definitions
+ *
+ * @param null $format
+ * @return array
+ */
+function microformats2_formats($format = NULL) {
+  $properties = array(
+    // See http://microformats.org/wiki/h-adr
+    'h-adr' => array(
+      'p-street-address' => t('house/apartment number, floor, street name'),
+      'p-extended-address' => t('additional street details'),
+      'p-post-office-box' => t('post office mailbox'),
+      'p-locality' => t('city/town/village'),
+      'p-region' => t('state/county/province'),
+      'p-postal-code' => t('postal code, e.g. ZIP in the US'),
+      'p-country-name' => t('should be full name of country, country code ok'),
+      'p-label' => t('a mailing label, plain text, perhaps with preformatting'),
+      'p-geo' => t('or u-geo with a RFC 5870 geo: URL), optionally embedded h-geo'),
+      'p-latitude' => t('decimal latitude'),
+      'p-longitude' => t('decimal longitude'),
+      'p-altitude' => t('decimal altitude - new in vCard4 (RFC6350)'),
+    ),
+    // See http://microformats.org/wiki/h-card
+    'h-card' => array(
+      'p-name' => t('The full/formatted name of the person or organisation'),
+      'p-honorific-prefix' => t('e.g. Mrs., Mr. or Dr.'),
+      'p-given-name' => t('given (often first) name'),
+      'p-additional-name' => t('other/middle name'),
+      'p-family-name' => t('family (often last) name'),
+      'p-sort-string' => t('string to sort by'),
+      'p-honorific-suffix' => t('e.g. Ph.D, Esq.'),
+      'p-nickname' => t('nickname/alias/handle'),
+      'u-email' => t('email address'),
+      'u-logo' => t('a logo representing the person or organisation'),
+      'u-photo' => t(''),
+      'u-url' => t('home page'),
+      'u-uid' => t('unique identifier, often canonical URL'),
+      'p-category' => t('category/tag'),
+      'p-adr' => t('postal address, optionally embed an h-adr'),
+      'p-post-office-box' => t(''),
+      'p-extended-address' => t('apartment/suite/room name/number if any'),
+      'p-street-address' => t('street number + name'),
+      'p-locality' => t('city/town/village'),
+      'p-region' => t('state/county/province'),
+      'p-postal-code' => t('postal code, e.g. US ZIP'),
+      'p-country-name' => t('country name'),
+      'p-label' => t(''),
+      'p-geo' => t(''),
+      'p-latitude' => t('decimal latitude'),
+      'p-longitude' => t('decimal longitude'),
+      'p-altitude' => t('decimal altitude'),
+      'p-tel' => t('telephone number'),
+      'p-note' => t('additional notes'),
+      'dt-bday' => t('birth date'),
+      'u-key' => t('cryptographic public key e.g. SSH or GPG'),
+      'p-org' => t('affiliated organization, optionally embed an h-card'),
+      'p-job-title' => t('job title, previously "title" in hCard, disambiguated.'),
+      'p-role' => t('description of role'),
+      'u-impp' => t('per RFC 4770, new in vCard4 (RFC6350)'),
+      'p-sex' => t('biological sex, new in vCard4 (RFC6350)'),
+      'p-gender-identity' => t('gender identity, new in vCard4 (RFC6350)'),
+      'dt-anniversary' => t(''),
+    ),
+    // http://microformats.org/wiki/h-entry
+    'h-entry' => array(
+      'p-name' => t('entry name/title'),
+      'p-summary' => t('short entry summary'),
+      'e-content' => t('full content of the entry'),
+      'dt-published' => t('when the entry was published'),
+      'dt-updated' => t('when the entry was updated'),
+      'p-author' => t('who wrote the entry, optionally embedded h-card(s)'),
+      'p-category' => t('entry categories/tags'),
+      'u-url' => t('entry permalink URL'),
+      'u-uid' => t('unique entry ID'),
+      'p-location' => t('location the entry was posted from, optionally embed h-card, h-adr, or h-geo'),
+      'u-syndication' => t('URL(s) of syndicated copies of this post. The property equivalent of rel-syndication (example)'),
+      'u-in-reply-to' => t('the URL which the h-entry is considered reply to (i.e. doesn’t make sense without context, could show up in comment thread), optionally an embedded h-cite (reply-context) (example)'),
+    ),
+    // http://microformats.org/wiki/h-event
+    'h-event' => array(
+      'p-name' => t('event name (or title)'),
+      'p-summary' => t('short summary of the event'),
+      'dt-start' => t('datetime the event starts'),
+      'dt-end' => t('datetime the event ends'),
+      'dt-duration' => t('duration of the event'),
+      'p-description' => t('more detailed description of the event'),
+      'u-url' => t('permalink for the event'),
+      'p-category' => t('event category(ies)/tag(s)'),
+      'p-location' => t('where the event takes place, optionally embedded h-card, h-adr, or h-geo'),
+    ),
+    // http://microformats.org/wiki/h-feed
+    'h-feed' => array(
+      'p-name' => t('name of the feed'),
+      'p-author' => t('author of the feed, optionally embed an h-card'),
+      'u-url' => t('URL of the feed'),
+      'u-photo' => t('representative photo / icon for the feed'),
+    ),
+    // http://microformats.org/wiki/h-geo
+    'h-geo' => array(
+      'p-latitude' => t('decimal latitude'),
+      'p-longitude' => t('decimal longitude'),
+      'p-altitude' => t('decimal altitude'),
+    ),
+    // http://microformats.org/wiki/h-item
+    'h-item' => array(
+      'p-name' => t('item name'),
+      'u-url' => t('permalink URL'),
+      'u-photo' => t('photo URL '),
+    ),
+    // http://microformats.org/wiki/h-listing
+    'h-listing' => array(
+      'p-lister' => t('h-card'),
+      'dt-listed' => t('datetime, optional'),
+      'dt-expired' => t('datetime, optional'),
+      'p-price' => t('text, optional (should include a floating-point number with optional ISO currency codes)'),
+      'p-category' => t('text, optional, zero or more'),
+      'p-action' => t('text, optional, one of the following values sell, rent, trade, meet, announce, offer, wanted, event, service '),
+      'u-url' => t(''),
+    ),
+    // http://microformats.org/wiki/h-product
+    'h-product' => array(
+      'p-name' => t('name of the product'),
+      'u-photo' => t('photo of the product'),
+      'p-brand' => t('manufacturer, can also be embedded h-card'),
+      'p-category' => t('freeform categories or tags applied to the item by the reviewer'),
+      'e-description' => t(''),
+      'u-url' => t('URL of the product'),
+      'u-identifier' => t('includes type (e.g. mpn, upc, isbn, issn, sn, vin, sku etc.) and value.'),
+      'p-review' => t('a review of the product, optionally embedded h-review'),
+      'p-price' => t('retail price of the product '),
+    ),
+    // http://microformats.org/wiki/h-recipe
+    'h-recipe' => array(
+      'p-name' => t('the name of the recipe'),
+      'p-ingredient' => t('describes one or more ingredients used in the recipe.'),
+      'p-yield' => t('Specifies the quantity produced by the recipe, like how many persons it satisfyies'),
+      'e-instructions' => t('the method of the recipe.'),
+      'dt-duration' => t('the time it takes to prepare the meal described by the recipe.'),
+      'u-photo' => t('an accompanying image '),
+      'p-summary' => t('provides a short summary or introduction'),
+      'p-author' => t('person who wrote the recipe, optionally embedded with h-card'),
+      'dt-published' => t('the date the recipe was published'),
+      'p-nutrition' => t('nutritional information like calories, fat, dietary fiber etc.'),
+    ),
+    // http://microformats.org/wiki/h-resume
+    'h-resume' => array(
+      'p-name' => t('brief name of the resume'),
+      'p-summary' => t('overview of qualifications and objectives'),
+      'p-contact' => t('current contact info in an h-card'),
+      'p-education' => t('an education h-event event, years, embedded h-card of the school, location.'),
+      'p-experience' => t('a job or other professional experience h-event event, years, embedded h-card of the organization, location, job-title.'),
+      'p-skill' => t('a skill or ability, optionally including level and/or duration of experience'),
+      'p-affiliation' => t('an affiliation with an h-card organization'),
+    ),
+    // http://microformats.org/wiki/h-review
+    'h-review' => array(
+      'p-name' => t('name of the review'),
+      'p-item' => t('thing been reviewed, including embedded microformat for e.g. business or person (h-card), event (h-event), place (h-adr or h-geo), product (h-product), website, url, or other item (h-item).'),
+      'p-reviewer' => t('person who authored the review, optionally with an embedded h-card'),
+      'dt-reviewed' => t('date time of when the review was written'),
+      'p-rating' => t('value from 1-5 indicating a rating for the item (5 best).'),
+      'p-best' => t('define best rating value. can be numerically lower than worst.'),
+      'p-worst' => t('define worst rating value. can be numerically higher than best.'),
+      'e-description' => t('the full text written evaluation and opinion of the reviewer'),
+      'p-category' => t('freeform categories or tags applied to the item by the reviewer'),
+      'u-url' => t('review permalink URL'),
+    ),
+    // http://microformats.org/wiki/h-aggregate
+    'h-review-aggregate ' => array(
+    ),
+  );
+  return isset($properties[$format]) ? $properties[$format] : $properties;
+}
+
+/**
+ * Implements hook_field_group_pre_render_alter().
+ */
+function microformats2_field_group_pre_render_alter(&$element, $group, &$form) {
+  $group_name = $group->group_name;
+  $properties = microformats2_property_field_mapping();
+  if (!isset($properties[$group_name])) {
+    return;
+  }
+
+  // Move the original render array into a wrapper render array.
+  $element = microformats2_element_wrapper($element, $group_name);
+
+  // WTF: The previous line should be sufficient, but moving the render array as
+  // subelement into a new render array – what usually works just fine –
+  // prevents it from beeing rendered in this case.
+  // So we work around here and check whether there's a renderable sub element
+  // and in case it is so we add a pseudo element to the array to re-enable the
+  // rendering.
+  foreach ($element['#content'] as $key => $value) {
+    if (strpos($key, '#') !== 0) {
+      // This is weird, but re-enables rendering of original render array.
+      $element['_'][] = array();
+      break;
+    }
+  }
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of file module.
+ */
+function microformats2_microformats2_file($field_name, $items, $variables) {
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of image module.
+ */
+function microformats2_microformats2_image($field_name, $items, $variables) {
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of list module.
+ */
+function microformats2_microformats2_list_boolean($field_name, $items, $variables) {
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of list module.
+ */
+function microformats2_microformats2_list_float($field_name, $items, $variables) {
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of list module.
+ */
+function microformats2_microformats2_list_integer($field_name, $items, $variables) {
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of list module.
+ */
+function microformats2_microformats2_list_text($field_name, $items, $variables) {
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of number module.
+ */
+function microformats2_microformats2_number_decimal($field_name, $items, $variables) {
+  foreach ($items as $delta => $element) {
+    // Move the original render array into a wrapper render array.
+    $items[$delta] = microformats2_element_wrapper($element, $field_name);
+  }
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of number module.
+ */
+function microformats2_microformats2_number_float($field_name, $items, $variables) {
+  foreach ($items as $delta => $element) {
+    // Move the original render array into a wrapper render array.
+    $items[$delta] = microformats2_element_wrapper($element, $field_name);
+  }
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of number module.
+ */
+function microformats2_microformats2_number_integer($field_name, $items, $variables) {
+  foreach ($items as $delta => $element) {
+    // Move the original render array into a wrapper render array.
+    $items[$delta] = microformats2_element_wrapper($element, $field_name);
+  }
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of taxonomy module.
+ */
+function microformats2_microformats2_taxonomy_term_reference($field_name, $items, $variables) {
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of text module.
+ */
+function microformats2_microformats2_text($field_name, $items, $variables) {
+  foreach ($items as $delta => $element) {
+    // Move the original render array into a wrapper render array.
+    $items[$delta] = microformats2_element_wrapper($element, $field_name);
+  }
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of text module.
+ */
+function microformats2_microformats2_text_long($field_name, $items, $variables) {
+  foreach ($items as $delta => $element) {
+    // Move the original render array into a wrapper render array.
+    $items[$delta] = microformats2_element_wrapper($element, $field_name);
+  }
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_field_name() on behalf of text module.
+ */
+function microformats2_microformats2_text_with_summary($field_name, $items, $variables) {
+  foreach ($items as $delta => $element) {
+    // Move the original render array into a wrapper render array.
+    $items[$delta] = microformats2_element_wrapper($element, $field_name);
+  }
+  return $items;
+}
+
+/**
+ * Implements hook_microformats2_addressfield() on behalf of addressfield module.
+ */
+function microformats2_microformats2_addressfield($field_name, $items, $variables) {
+  foreach ($items as $delta => $element) {
+    // Markup properties first
+    $mapping = microformats2_property_field_mapping($field_name);
+    foreach($mapping['properties'] as $property_keys_string => $property_class) {
+      $i = 0;
+      $property_keys = explode(MICROFORMATS2_PROPERTY_SEPERATOR, $property_keys_string);
+
+      $el = &$element;
+      foreach($property_keys as $property_key) {
+        $i++;
+        $el = &$el[$property_key];
+        if ($i === count($property_keys)) {
+          $el['#attributes']['class'][] = $property_class;
+        }
+      }
+    }
+
+    // Wrap complete address field second
+    $items[$delta] = microformats2_element_wrapper($element, $field_name);
+  }
+  return $items;
+}
