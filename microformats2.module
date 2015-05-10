@@ -26,10 +26,9 @@ function microformats2_block_view($delta = '') {
   $block = array();
   switch ($delta) {
     case 'mf2':
-      $current_url = url(current_path(), array('absolute' => TRUE));
-      $block['subject'] = t('mf2');
+      $block['subject'] = t('microformats2');
       $block['content'] = array(
-        '#markup' => '<div>Microformats2 found for <strong>' . $current_url . '</strong>:</div><br />',
+        '#markup' => '<div>Microformats2 found on this page:</div><br />',
         '#attached' => array(
           'js' => array(
             drupal_get_path('module', 'microformats2') . '/js/microformat-shiv.js',
